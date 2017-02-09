@@ -67,6 +67,11 @@ public class WebTTSCloudImpl implements WebTTSCloudAPI {
     private static Set<Locale> getSupportedLocales() {
         Set<Locale> locales = new HashSet<Locale>();
         locales.add(Locale.forLanguageTag("en-us"));
+        locales.add(Locale.forLanguageTag("en-gb"));
+        locales.add(Locale.forLanguageTag("de-de"));
+        locales.add(Locale.forLanguageTag("es-es"));
+        locales.add(Locale.forLanguageTag("fr-fr"));
+        locales.add(Locale.forLanguageTag("it-it"));
         return locales;
     }
 
