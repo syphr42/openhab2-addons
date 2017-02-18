@@ -8,6 +8,8 @@
  */
 package org.openhab.voice.webtts.internal;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -20,8 +22,6 @@ import org.eclipse.smarthome.core.audio.URLAudioStream;
 import org.eclipse.smarthome.core.voice.TTSException;
 import org.eclipse.smarthome.core.voice.TTSService;
 import org.eclipse.smarthome.core.voice.Voice;
-import org.openhab.voice.webtts.internal.cloudapi.WebTTSCloudAPI;
-import org.openhab.voice.webtts.internal.cloudapi.WebTTSCloudImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,8 +36,6 @@ public class WebTTSService implements TTSService {
     private String baseUrl = null;
 
     private final Logger logger = LoggerFactory.getLogger(WebTTSService.class);
-
-    private WebTTSCloudAPI webttsImpl;
 
     /**
      * Set of supported voices
@@ -55,7 +53,6 @@ public class WebTTSService implements TTSService {
     protected void activate(Map<String, Object> config) {
         try {
             modified(config);
-            webttsImpl = initVoiceImplementation();
             voices = initVoices();
             audioFormats = initAudioFormats();
         } catch (Throwable t) {
@@ -109,11 +106,29 @@ public class WebTTSService implements TTSService {
         // now create the input stream for given text, locale, format. There is
         // only a default voice
         try {
-            return new URLAudioStream(webttsImpl.createURL(this.baseUrl, text, voice.getLocale().toLanguageTag(),
-                    requestedFormat.getCodec()));
+            return new URLAudioStream(
+                    createURL(this.baseUrl, text, voice.getLocale().toLanguageTag(), requestedFormat.getCodec()));
         } catch (AudioException ex) {
             throw new TTSException("Could not create AudioStream: " + ex.getMessage(), ex);
         }
+    }
+
+    /**
+     * This method will create the URL for the cloud service. The text will be
+     * URI encoded as it is part of the URL.
+     *
+     * It is in package scope to be accessed by tests.
+     */
+    private String createURL(String baseUrl, String text, String locale, String audioFormat) {
+        String encodedMsg;
+        try {
+            encodedMsg = URLEncoder.encode(text, "UTF-8");
+        } catch (UnsupportedEncodingException ex) {
+            logger.error("UnsupportedEncodingException for UTF-8 MUST NEVER HAPPEN! Check your JVM configuration!", ex);
+            // fall through and use msg un-encoded
+            encodedMsg = text;
+        }
+        return baseUrl + "?lng=" + locale + "&msg=" + encodedMsg;
     }
 
     /**
@@ -123,9 +138,9 @@ public class WebTTSService implements TTSService {
      */
     private final HashSet<Voice> initVoices() {
         HashSet<Voice> voices = new HashSet<Voice>();
-        Set<Locale> locales = webttsImpl.getAvailableLocales();
+        Set<Locale> locales = getAvailableLocales();
         for (Locale local : locales) {
-            Set<String> voiceLabels = webttsImpl.getAvailableVoices(local);
+            Set<String> voiceLabels = getAvailableVoices(local);
             for (String voiceLabel : voiceLabels) {
                 voices.add(new WebTTSVoice(local, voiceLabel));
             }
@@ -140,34 +155,8 @@ public class WebTTSService implements TTSService {
      */
     private final HashSet<AudioFormat> initAudioFormats() {
         HashSet<AudioFormat> audioFormats = new HashSet<AudioFormat>();
-        Set<String> formats = webttsImpl.getAvailableAudioFormats();
-        for (String format : formats) {
-            audioFormats.add(getAudioFormat(format));
-        }
+        audioFormats.add(AudioFormat.MP3);
         return audioFormats;
-    }
-
-    /**
-     * Up to now only MP3 supported.
-     */
-    private final AudioFormat getAudioFormat(String format) {
-        // MP3 format
-        if (AudioFormat.CODEC_MP3.equals(format)) {
-            // we use by default: MP3, 44khz_16bit_mono
-            Boolean bigEndian = null; // not used here
-            Integer bitDepth = 16;
-            Integer bitRate = null;
-            Long frequency = 44000L;
-
-            return new AudioFormat(AudioFormat.CONTAINER_NONE, AudioFormat.CODEC_MP3, bigEndian, bitDepth, bitRate,
-                    frequency);
-        } else {
-            throw new RuntimeException("Audio format " + format + " not yet supported");
-        }
-    }
-
-    private final WebTTSCloudAPI initVoiceImplementation() {
-        return new WebTTSCloudImpl();
     }
 
     @Override
@@ -178,5 +167,36 @@ public class WebTTSService implements TTSService {
     @Override
     public String getLabel(Locale locale) {
         return "WebTTS Text-to-Speech Engine";
+    }
+
+    private static Set<Locale> supportedLocales = getSupportedLocales();
+
+    /**
+     * Will support only 1 locale for the moment.
+     */
+    private static Set<Locale> getSupportedLocales() {
+        Set<Locale> locales = new HashSet<Locale>();
+        locales.add(Locale.forLanguageTag("en-us"));
+        locales.add(Locale.forLanguageTag("en-gb"));
+        locales.add(Locale.forLanguageTag("de-de"));
+        locales.add(Locale.forLanguageTag("es-es"));
+        locales.add(Locale.forLanguageTag("fr-fr"));
+        locales.add(Locale.forLanguageTag("it-it"));
+        return locales;
+    }
+
+    public Set<Locale> getAvailableLocales() {
+        return supportedLocales;
+    }
+
+    public Set<String> getAvailableVoices(Locale locale) {
+        Set<String> voices = new HashSet<String>();
+        for (Locale voiceLocale : supportedLocales) {
+            if (voiceLocale.toLanguageTag().equalsIgnoreCase(locale.toLanguageTag())) {
+                voices.add("WebTTS");
+                break;
+            }
+        }
+        return voices;
     }
 }
